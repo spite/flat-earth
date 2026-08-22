@@ -4,9 +4,83 @@
   padding: 0;
 }
 
+body {
+  background: #11151c;
+  overflow: hidden;
+}
+
+canvas {
+  display: block;
+}
+
+/* Lives inside the panel now, so it needs no placing of its own. */
 #ui {
+  color: #b9b9be;
+  font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  pointer-events: none;
+  overflow-wrap: anywhere;
+}
+
+#gui.hidden {
+  display: none;
+}
+
+#gui {
   position: absolute;
-  left: 0;
   top: 0;
+  right: 0;
   z-index: 100;
+  padding: 12px;
+  max-height: 100vh;
+  overflow-y: auto;
+}
+
+#ui .hint,
+#ui #imagery-status,
+#ui #terrain-status,
+#ui #detail-status {
+  color: #7e7e86;
+}
+
+#ui #imagery-status {
+  margin-top: 6px;
+}
+
+#ui #terrain-status {
+  margin-top: 2px;
+}
+
+/* Pending work, as a line across the very top. Nothing to see when idle. */
+#progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 10000;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease 0.15s;
+}
+
+#progress.busy {
+  opacity: 1;
+  transition-delay: 0s;
+}
+
+#progress-fill {
+  height: 100%;
+  width: 0;
+  background: #ffb703;
+  transition: width 0.2s ease;
+}
+
+#progress-text {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  color: #ffb703;
+  font: 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-shadow: 0 1px 3px #11151c;
+  white-space: nowrap;
 }
