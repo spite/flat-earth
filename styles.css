@@ -14,6 +14,7 @@
   width: 450px;
 }
 
+
 body {
   background: #11151c;
   overflow: hidden;
@@ -98,4 +99,31 @@ canvas {
   font-variant-numeric: tabular-nums;
   text-shadow: 0 1px 3px #11151c;
   white-space: nowrap;
+}
+
+@media (max-width: 950px) {
+  #gui {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 8px;
+    max-height: none;
+  }
+
+  .gui {
+    --gui-max-height: calc(70dvh);
+    --gui-label-width: 104px;
+    width: auto;
+  }
+}
+
+@media (pointer: coarse) {
+  .gui {
+    --gui-row-height: 34px;
+    --gui-gap: 12px;
+    --gui-check-size: 22px;
+    --gui-track-height: 6px;
+  }
 }

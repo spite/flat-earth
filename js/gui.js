@@ -183,5 +183,12 @@ export function buildGui({ countries, byName, setCenter, counters }) {
   gui.addSection("Map data");
   gui.addElement(document.querySelector("#readout"));
 
+  // guspira folds below 950px on its own, but a stored panel state beats that
+  // default -- so a session that left it open would carry that onto a phone,
+  // where the panel covers the map.
+  if (window.matchMedia("(max-width: 950px)").matches) {
+    gui.rowsExpanded.set(false);
+  }
+
   return gui;
 }
