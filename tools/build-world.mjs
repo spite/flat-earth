@@ -1,4 +1,3 @@
-
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -59,9 +58,25 @@ function simplify(points, tolerance) {
   return points.filter((_, i) => keep[i]);
 }
 
-const source = JSON.parse(
-  fs.readFileSync(path.join(root, "data", "custom.json"), "utf8")
+const CANDIDATES = ["custom.json", "natural-earth.geojson"];
+
+const sourceName = CANDIDATES.find((name) =>
+  fs.existsSync(path.join(root, "data", name))
 );
+
+if (!sourceName) {
+  console.error(
+    `no source in data/ -- looked for ${CANDIDATES.join(", ")}\n` +
+      "  run: node tools/fetch-world-source.mjs"
+  );
+  process.exit(1);
+}
+
+const sourcePath = path.join(root, "data", sourceName);
+const source = JSON.parse(fs.readFileSync(sourcePath, "utf8"));
+
+const field = (properties, name) =>
+  properties[name] ?? properties[name.toUpperCase()];
 
 const coords = [];
 const ringOffsets = [0];
@@ -98,15 +113,15 @@ for (const feature of source.features) {
   if (ringCount === 0) ringCount = addRings(polygons, 0);
 
   if (ringCount === 0) {
-    console.warn(`  dropped entirely: ${properties.name}`);
+    console.warn(`  dropped entirely: ${field(properties, "name")}`);
     continue;
   }
 
   countries.push({
-    id: properties.gu_a3,
-    name: properties.name,
-    lon: round(parseFloat(properties.label_x)),
-    lat: round(parseFloat(properties.label_y)),
+    id: field(properties, "gu_a3"),
+    name: field(properties, "name"),
+    lon: round(parseFloat(field(properties, "label_x"))),
+    lat: round(parseFloat(field(properties, "label_y"))),
     firstRing,
     ringCount,
   });
@@ -116,12 +131,13 @@ const world = { coords, ringOffsets, countries };
 const out = path.join(root, "data", "world.json");
 fs.writeFileSync(out, JSON.stringify(world));
 
-const sourceSize = fs.statSync(path.join(root, "data", "custom.json")).size;
+const sourceSize = fs.statSync(sourcePath).size;
 const outSize = fs.statSync(out).size;
 console.log(
   `${countries.length} countries, ${ringOffsets.length - 1} rings, ` +
     `${coords.length / 2} points`
 );
 console.log(
-  `${(sourceSize / 1e6).toFixed(1)}MB -> ${(outSize / 1e6).toFixed(2)}MB`
+  `${sourceName}: ${(sourceSize / 1e6).toFixed(1)}MB -> ` +
+    `${(outSize / 1e6).toFixed(2)}MB`
 );

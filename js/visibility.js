@@ -1,4 +1,3 @@
-
 import { lonLatToMosaicUV, planeToLonLat, uncenter } from "./projection.js";
 
 const TILE_SIZE = 256;
@@ -16,18 +15,14 @@ function unwrap(delta) {
   return delta;
 }
 
-export function probeVisibleWindow(options) {
+export function probeSamples(options) {
   const {
     unproject,
     projection,
     center,
     pixelWidth,
     pixelHeight,
-    minZoom,
-    maxZoom,
-    budget,
     grid = 24,
-    pad = PADDING,
   } = options;
 
   const samples = new Array(grid * grid).fill(null);
@@ -75,7 +70,12 @@ export function probeVisibleWindow(options) {
   const usable = scales.filter((s) => Number.isFinite(s) && s > 0);
   if (usable.length === 0) return null;
 
-  const scale = median(usable);
+  return { samples, scale: median(usable), pixelWidth, pixelHeight };
+}
+
+export function windowFor(probe, options) {
+  const { minZoom, maxZoom, budget, pad = PADDING } = options;
+  const { samples, scale } = probe;
 
   const ideal = Math.round(Math.log2(1 / (TILE_SIZE * scale)));
 

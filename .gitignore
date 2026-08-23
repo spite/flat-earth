@@ -1,0 +1,4 @@
+# Build input, not a runtime asset: data/world.json is what the app fetches,
+# and it is committed. Either source regenerates it -- see tools/.
+data/custom.json
+data/natural-earth.geojson

@@ -1,24 +1,69 @@
-
 import {
   CanvasTexture,
   ClampToEdgeWrapping,
   DataTexture,
   NearestFilter,
   NearestMipmapNearestFilter,
-  DataUtils,
   HalfFloatType,
   LinearFilter,
   LinearMipmapLinearFilter,
   RedFormat,
   RepeatWrapping,
 } from "three";
+import { buildPyramidFrom, decodeElevation } from "./elevation-decode.js";
 
 const TILE_SIZE = 256;
 
-function toHalfArray(values) {
-  const out = new Uint16Array(values.length);
-  for (let i = 0; i < values.length; i++) out[i] = DataUtils.toHalfFloat(values[i]);
-  return out;
+let decoder = null;
+let decoderRetired = false;
+let nextJob = 0;
+const pending = new Map();
+
+try {
+// Eager: the worker parses three, which would delay the first decode.
+  decoder = new Worker(new URL("./elevation-worker.js", import.meta.url), {
+    type: "module",
+  });
+  decoder.onmessage = ({ data: { id, error, ...result } }) => {
+    const job = pending.get(id);
+    if (!job) return;
+    pending.delete(id);
+    if (error) job.reject(new Error(error));
+    else job.resolve(result);
+  };
+  decoder.onerror = () => {
+    decoderRetired = true;
+    for (const job of pending.values()) {
+      job.reject(new Error("elevation worker failed"));
+    }
+    pending.clear();
+  };
+} catch {
+  decoder = null;
+}
+
+function runJob(kind, job, transfer) {
+  const id = ++nextJob;
+  return new Promise((resolve, reject) => {
+    pending.set(id, { resolve, reject });
+    decoder.postMessage({ id, kind, ...job }, transfer);
+  });
+}
+
+function decode(job) {
+  if (!decoder || decoderRetired) return Promise.resolve(decodeElevation(job));
+  return runJob("decode", job, [job.pixels.buffer]).then((r) => r.decoded);
+}
+
+export function buildPyramid(heights, width, height) {
+  if (!decoder || decoderRetired) {
+    return Promise.resolve(buildPyramidFrom(heights, width, height));
+  }
+
+  const copy = heights.slice();
+  return runJob("pyramid", { heights: copy, width, height }, [copy.buffer]).then(
+    (r) => r.levels
+  );
 }
 
 function delay(ms, signal) {
@@ -31,7 +76,6 @@ function delay(ms, signal) {
   });
 }
 
-// A throttled response often has no CORS header, so no status.
 function createThrottle() {
   let openAt = 0;
   let penalty = 0;
@@ -51,7 +95,10 @@ function createThrottle() {
   };
 }
 
-async function loadTile(url, signal, retries, throttle) {
+// One for the module: per-build back-off left other layers hammering away.
+const throttle = createThrottle();
+
+async function loadTile(url, signal, retries) {
   for (let attempt = 0; ; attempt++) {
     await throttle.wait(signal);
     try {
@@ -86,7 +133,17 @@ async function pool(items, limit, task) {
 }
 
 // Keyed per source: layers collide on bare z/x/y.
-const TILE_CACHE_LIMIT = 128;
+const TILE_CACHE_FLOOR = 128;
+const TILE_CACHE_CEILING = 256;
+let tileCacheLimit = TILE_CACHE_FLOOR;
+
+export function setTileCacheLimit(wanted) {
+  tileCacheLimit = Math.max(
+    TILE_CACHE_FLOOR,
+    Math.min(TILE_CACHE_CEILING, Math.ceil(wanted))
+  );
+  evict();
+}
 const tileCache = new Map();
 
 function cacheGet(key) {
@@ -97,13 +154,29 @@ function cacheGet(key) {
   return bitmap;
 }
 
-function cachePut(key, bitmap) {
-  tileCache.set(key, bitmap);
-  while (tileCache.size > TILE_CACHE_LIMIT) {
+function evict() {
+  while (tileCache.size > tileCacheLimit) {
     const [oldest, evicted] = tileCache.entries().next().value;
     tileCache.delete(oldest);
     evicted.close();
   }
+}
+
+function cachePut(key, bitmap) {
+  tileCache.set(key, bitmap);
+  evict();
+}
+
+export async function fetchTile(provider, x, y, zoom, options = {}) {
+  const { signal, retries = 3, cacheKey = "" } = options;
+  const key = `${cacheKey}|${zoom}/${x}/${y}`;
+
+  const cached = cacheGet(key);
+  if (cached) return cached;
+
+  const bitmap = await loadTile(provider(x, y, zoom), signal, retries);
+  cachePut(key, bitmap);
+  return bitmap;
 }
 
 async function compositeTiles(provider, zoom, options) {
@@ -115,16 +188,18 @@ async function compositeTiles(provider, zoom, options) {
     background,
     cache = false,
     cacheKey = "",
+    readback = false,
   } = options;
 
   const side = 2 ** zoom;
   const block = options.window ?? { x0: 0, y0: 0, width: side, height: side };
-  const originX = ((block.x0 % side) + side) % side;
 
   const canvas = document.createElement("canvas");
   canvas.width = block.width * TILE_SIZE;
   canvas.height = block.height * TILE_SIZE;
-  const context = canvas.getContext("2d", { willReadFrequently: true });
+  // Only the heightfield is read back; elsewhere this just forces a slower,
+  // CPU-backed canvas.
+  const context = canvas.getContext("2d", { willReadFrequently: readback });
 
   if (background) {
     context.fillStyle = background;
@@ -142,7 +217,6 @@ async function compositeTiles(provider, zoom, options) {
 
   let done = 0;
   let failed = 0;
-  const throttle = createThrottle();
 
   await pool(tiles, concurrency, async ([x, y, column, row]) => {
     try {
@@ -151,7 +225,7 @@ async function compositeTiles(provider, zoom, options) {
       const cached = bitmap !== null;
 
       if (!bitmap) {
-        bitmap = await loadTile(provider(x, y, zoom), signal, retries, throttle);
+        bitmap = await loadTile(provider(x, y, zoom), signal, retries);
       }
 
       context.drawImage(bitmap, column * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE);
@@ -175,7 +249,6 @@ async function compositeTiles(provider, zoom, options) {
     height: canvas.height,
     tiles: tiles.length,
     failed,
-    originX,
   };
 }
 
@@ -193,65 +266,23 @@ export async function buildColorMosaic(provider, zoom, options = {}) {
   return { texture, tiles, failed };
 }
 
-// Maxima, not averages, so a ray can never pass a peak.
-function buildMaxPyramid(heights, width, height) {
-  const levels = [{ data: heights, width, height }];
-
-  let source = heights;
-  let w = width;
-  let h = height;
-
-  while (w > 1 || h > 1) {
-    const nw = Math.max(1, w >> 1);
-    const nh = Math.max(1, h >> 1);
-    const next = new Float32Array(nw * nh);
-
-    for (let y = 0; y < nh; y++) {
-      for (let x = 0; x < nw; x++) {
-        const x0 = Math.min(2 * x, w - 1);
-        const x1 = Math.min(2 * x + 1, w - 1);
-        const y0 = Math.min(2 * y, h - 1);
-        const y1 = Math.min(2 * y + 1, h - 1);
-        next[y * nw + x] = Math.max(
-          source[y0 * w + x0],
-          source[y0 * w + x1],
-          source[y1 * w + x0],
-          source[y1 * w + x1]
-        );
-      }
-    }
-
-    levels.push({ data: next, width: nw, height: nh });
-    source = next;
-    w = nw;
-    h = nh;
-  }
-
-  return levels;
-}
-
 export async function buildElevationMosaic(provider, zoom, options = {}) {
+  const { pyramid: wantPyramid = true } = options;
   // Primed at sea level: an untouched pixel decodes to -32768m.
   const { context, width, height, tiles, failed } = await compositeTiles(
     provider,
     zoom,
-    { retries: 5, background: "rgb(128, 0, 0)", ...options }
+    { retries: 5, background: "rgb(128, 0, 0)", readback: true, ...options }
   );
-  const { data } = context.getImageData(0, 0, width, height);
-
-  // Half float: bilinear on raw terrarium spikes where g wraps.
-  const heights = new Uint16Array(width * height);
-  const metresPerTexel = new Float32Array(width * height);
-
-  let maxHeight = -Infinity;
-
-  for (let i = 0; i < heights.length; i++) {
-    const p = i * 4;
-    const metres = data[p] * 256 + data[p + 1] + data[p + 2] / 256 - 32768;
-    if (metres > maxHeight) maxHeight = metres;
-    metresPerTexel[i] = metres;
-    heights[i] = DataUtils.toHalfFloat(metres);
-  }
+  const { data: pixels } = context.getImageData(0, 0, width, height);
+  const startedAt = performance.now();
+  const { heights, maxHeight, levels } = await decode({
+    pixels,
+    width,
+    height,
+    wantPyramid,
+  });
+  const decodeMs = performance.now() - startedAt;
 
   const texture = new DataTexture(heights, width, height, RedFormat, HalfFloatType);
   texture.wrapS = RepeatWrapping;
@@ -260,56 +291,33 @@ export async function buildElevationMosaic(provider, zoom, options = {}) {
   texture.magFilter = LinearFilter;
   texture.needsUpdate = true;
 
-  const pyramidLevels = buildMaxPyramid(metresPerTexel, width, height).map(
-    (level) => ({
-      data: toHalfArray(level.data),
-      width: level.width,
-      height: level.height,
-    })
-  );
-
-  const pyramid = new DataTexture(
-    pyramidLevels[0].data,
-    width,
-    height,
-    RedFormat,
-    HalfFloatType
-  );
-  pyramid.mipmaps = pyramidLevels;
-  pyramid.generateMipmaps = false;
-  pyramid.wrapS = ClampToEdgeWrapping;
-  pyramid.wrapT = ClampToEdgeWrapping;
-  pyramid.minFilter = NearestMipmapNearestFilter;
-  pyramid.magFilter = NearestFilter;
-  pyramid.needsUpdate = true;
+  let pyramid = null;
+  if (levels) {
+    pyramid = new DataTexture(
+      levels[0].data,
+      width,
+      height,
+      RedFormat,
+      HalfFloatType
+    );
+    pyramid.mipmaps = levels;
+    pyramid.generateMipmaps = false;
+    pyramid.wrapS = ClampToEdgeWrapping;
+    pyramid.wrapT = ClampToEdgeWrapping;
+    pyramid.minFilter = NearestMipmapNearestFilter;
+    pyramid.magFilter = NearestFilter;
+    pyramid.needsUpdate = true;
+  }
 
   return {
     texture,
     pyramid,
-    pyramidLevels: pyramidLevels.length,
+    pyramidLevels: levels ? levels.length : 0,
     width,
     height,
     tiles,
     failed,
     maxHeight,
+    decodeMs,
   };
-}
-
-export async function buildWindowMosaic(provider, block, options = {}) {
-  const { canvas, tiles, failed } = await compositeTiles(provider, block.zoom, {
-    ...options,
-    cache: true,
-    window: block,
-  });
-
-  const texture = new CanvasTexture(canvas);
-  texture.flipY = false;
-  texture.premultiplyAlpha = false;
-  texture.wrapS = ClampToEdgeWrapping;
-  texture.wrapT = ClampToEdgeWrapping;
-  texture.minFilter = LinearMipmapLinearFilter;
-  texture.magFilter = LinearFilter;
-  texture.generateMipmaps = true;
-
-  return { texture, tiles, failed };
 }

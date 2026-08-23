@@ -1,4 +1,3 @@
-
 export const PROJECTION = { equirectangular: 0, mercator: 1 };
 
 export const MERCATOR_MAX_LAT = 85.05113;
@@ -39,7 +38,6 @@ vec2 projectToPlane(in vec2 lonLat, in float mode) {
   float lat = clamp(lonLat.y, -MERCATOR_MAX_LAT, MERCATOR_MAX_LAT) * DEG;
   return vec2(lonLat.x, asinh(tan(lat)) * RAD);
 }
-
 
 // atan(sinh): the textbook inverse cancels near the equator.
 vec2 planeToLonLat(in vec2 xy, in float mode) {
