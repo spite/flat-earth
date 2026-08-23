@@ -11,6 +11,7 @@
 /* guspira sets --gui-font on .gui, and a nearer ancestor beats :root. */
 .gui {
   --gui-font: var(--sans);
+  width: 450px;
 }
 
 body {
@@ -42,7 +43,6 @@ canvas {
   z-index: 100;
   padding: 12px;
   max-height: 100vh;
-  overflow-y: auto;
 }
 
 #readout #imagery-status,
