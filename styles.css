@@ -115,6 +115,7 @@ canvas {
   .gui {
     --gui-max-height: calc(70dvh);
     --gui-label-width: 104px;
+    --gui-padding: 14px;
     width: auto;
   }
 }
