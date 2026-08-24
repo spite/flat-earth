@@ -11,7 +11,6 @@ export const showOutlines = signal(false);
 export const uiVisible = signal(true);
 
 export const imagerySource = signal("Esri satellite");
-export const imageryOpacity = signal(1);
 export const autoDetail = signal(true);
 
 export const terrain = signal(true);

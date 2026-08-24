@@ -6,7 +6,6 @@ import {
   elevationSource,
   exaggeration,
   hillshade,
-  imageryOpacity,
   imagerySource,
   projectionName,
   selected,
@@ -31,7 +30,6 @@ import {
 // One table, so a signal cannot be added without persisting it.
 const PARAMS = [
   ["img", imagerySource, "string"],
-  ["opacity", imageryOpacity, "number"],
   ["detail", autoDetail, "bool"],
   ["shadows", castShadows, "bool"],
   ["shadowstr", shadowStrength, "number"],

@@ -54,7 +54,6 @@ import {
   elevationSource,
   exaggeration,
   hillshade,
-  imageryOpacity,
   imagerySource,
   projectionName,
   selected,
@@ -204,7 +203,6 @@ const rasterUniforms = {
   tileDebug: { value: 0 },
   rawMosaic: { value: 0 },
   resolution: { value: new Vector2(1, 1) },
-  opacity: { value: 1 },
   elevation: { value: null },
   hasElevation: { value: 0 },
   elevBackstop: { value: null },
@@ -706,7 +704,6 @@ const gui = buildGui({
 
 // A table, so no uniform goes unbound and no binding forgets to invalidate.
 const UNIFORM_BINDINGS = [
-  ["opacity", imageryOpacity],
   ["hillshade", hillshade],
   ["exaggeration", exaggeration],
   ["shadowStrength", shadowStrength],

@@ -72,7 +72,6 @@ uniform float rawMosaic;
 uniform vec2 resolution;
 uniform vec2 center;
 uniform float projection;
-uniform float opacity;
 uniform float hasElevation;
 uniform vec4 elevWindow;
 uniform float elevationZoom;
@@ -341,9 +340,9 @@ void main() {
       float metres = metresPerTexel(lonLat.y, elevationZoom);
 
       float here = texture(elevation, elocal).r;
-      // Water is at sea level: from the bed the ocean shades itself from its
-      // own coast, and seamounts shadow the surface above them.
-      if (surf > 0.) here = max(here, 0.);
+      // Only under the fill, where the water is a flat sheet at sea level.
+      // Unfilled, the sea bed is terrain like any other and shadows itself.
+      if (surf > 0. && waterFill > .5) here = max(here, 0.);
 
       float dark = softShadow(elocal, here, metres);
       // Shadowed ground keeps some skylight.
@@ -355,6 +354,6 @@ void main() {
     color = mix(color, tileOverlay(uv, shownZoom, dx, dy), tileDebug);
   }
 
-  fragColor = vec4(color, opacity * blendWeight);
+  fragColor = vec4(color, blendWeight);
 }
 `;

@@ -13,7 +13,6 @@ import {
   elevationSource,
   exaggeration,
   hillshade,
-  imageryOpacity,
   imagerySource,
   projectionName,
   selected,
@@ -85,7 +84,6 @@ export function buildGui({ countries, byName, setCenter, counters }) {
   gui.addSection("Imagery");
   gui.addSelect("Source", imagerySource, ["none", ...Object.keys(colorProviders)]);
 
-  gui.addSlider("Opacity", imageryOpacity, 0, 1, 0.01);
 
   gui.addSection("Terrain");
   gui.addCheckbox("Shading", terrain);
@@ -148,7 +146,7 @@ export function buildGui({ countries, byName, setCenter, counters }) {
   const whileFilled = { disabledWhen: () => !waterFill() };
   gui.addColor("Tint", waterTint, whileFilled);
 
-  gui.addSection("Diagnostics", { open: false });
+  const diagnostics = gui.addSection("Diagnostics", { open: false });
   gui.addCheckbox("Window layer", autoDetail, {
     title: "Off falls back to the whole-world backstop, which is deliberately coarse",
   });
@@ -208,6 +206,10 @@ export function buildGui({ countries, byName, setCenter, counters }) {
   if (window.matchMedia("(max-width: 950px)").matches) {
     gui.rowsExpanded.set(false);
   }
+
+  // Same trap: guspira persists a section's state on first run, after which
+  // `open:` in the source is never consulted again.
+  diagnostics.setOpen(false);
 
   return gui;
 }
