@@ -30,11 +30,12 @@ precision highp float;
 
 uniform vec3 color;
 uniform float opacity;
+uniform float blendWeight;
 
 out vec4 fragColor;
 
 void main() {
-  fragColor = vec4(color, opacity);
+  fragColor = vec4(color, opacity * blendWeight);
 }
 `;
 
@@ -83,6 +84,9 @@ uniform float exaggeration;
 uniform float shadows;
 uniform float shadowStrength;
 uniform float shadowSteps;
+uniform float shadowSoftness;
+uniform float frameSeed;
+uniform float blendWeight;
 uniform sampler2D maxPyramid;
 uniform float pyramidLevels;
 uniform float terrainMax;
@@ -101,17 +105,25 @@ out vec4 fragColor;
 ${projectionGLSL}
 
 #define EQUATOR_METRES_PER_PIXEL 156543.03392804097
+#define SHADOW_RAYS 4
 
-float castShadow(in vec2 local, in float here, in float metres) {
-  vec2 texel = 1. / (elevWindow.zw * 256.);
-  float azimuth = sun.x * DEG;
-  vec2 stride = vec2(sin(azimuth), -cos(azimuth)) * texel;
-  float rise = tan(sun.y * DEG);
+// Hashed, not interleaved gradient noise: IGN is built to be structured, and
+// that reads as a weave. Seeded by frame so each sample lands somewhere new.
+float shadowNoise(in float seed) {
+  vec3 p = fract(vec3(gl_FragCoord.xy, frameSeed + seed) * .1031);
+  p += dot(p, p.yzx + 33.33);
+  return fract((p.x + p.y) * p.z);
+}
+
+float castShadow(
+  in vec2 local, in float here, in float metres, in float azimuth, in float rise
+) {
+  vec2 texels = elevWindow.zw * 256.;
+  vec2 dir = vec2(sin(azimuth), -cos(azimuth));
+  vec2 stride = dir / texels;
 
   // Per-pixel jitter, so misses read as noise not banding.
-  float dither = fract(
-    52.9829189 * fract(dot(gl_FragCoord.xy, vec2(.06711056, .00583715)))
-  );
+  float dither = shadowNoise(azimuth * 37.);
 
   float blocked = 0.;
   float t = 1. + dither;
@@ -130,8 +142,16 @@ float castShadow(in vec2 local, in float here, in float metres) {
     float span = exp2(level);
 
     if (ray > highest) {
-      // Half a footprint: the region is grid-aligned, the ray is not.
-      t += max(span * .5, 1.);
+      // To the cell exit, not half a span: from inside a cell that lands in
+      // an untested neighbour, and the misses come out cell-shaped.
+      vec2 q = p * texels;
+      vec2 toEdge = ((floor(q / span) + step(0., dir)) * span - q) / dir;
+      float exit = min(
+        abs(dir.x) < 1e-6 ? 1e9 : toEdge.x,
+        abs(dir.y) < 1e-6 ? 1e9 : toEdge.y
+      );
+
+      t += max(exit + .01, 1.);
       level = min(level + 1., pyramidLevels - 1.);
     } else if (level > 0.) {
       level -= 1.;
@@ -143,6 +163,34 @@ float castShadow(in vec2 local, in float here, in float metres) {
   }
 
   return smoothstep(0., .12, blocked);
+}
+
+// The sun is a disc, so its edge is a penumbra. One ray jittered is only noise;
+// scattering several across the disc and averaging is what softens it.
+float softShadow(in vec2 local, in float here, in float metres) {
+  float azimuth = sun.x * DEG;
+  float altitude = sun.y * DEG;
+
+  if (shadowSoftness <= 0.) {
+    return castShadow(local, here, metres, azimuth, tan(altitude));
+  }
+
+  float spread = shadowSoftness * .13;
+  float sum = 0.;
+
+  // Spaced around the disc and pushed out by sqrt to cover its area, then
+  // turned by the golden angle each frame so the samples interleave.
+  float turn = shadowNoise(0.) * 6.2831853 + frameSeed * 2.39996323;
+  float jitter = shadowNoise(11.);
+
+  for (int i = 0; i < SHADOW_RAYS; i++) {
+    float a = turn + float(i) * (6.2831853 / float(SHADOW_RAYS));
+    float r = spread * sqrt((float(i) + jitter) / float(SHADOW_RAYS));
+    float e = max(altitude + sin(a) * r, .01);
+    sum += castShadow(local, here, metres, azimuth + cos(a) * r, tan(e));
+  }
+
+  return sum / float(SHADOW_RAYS);
 }
 
 float metresPerTexel(in float lat, in float zoom) {
@@ -209,7 +257,7 @@ vec3 tileOverlay(in vec2 uv, in float zoom, in vec2 dx, in vec2 dy) {
 void main() {
   if (rawMosaic > .5) {
     vec2 t = gl_FragCoord.xy / resolution;
-    fragColor = vec4(texture(detailMap, vec2(t.x, 1. - t.y)).rgb, 1.);
+    fragColor = vec4(texture(detailMap, vec2(t.x, 1. - t.y)).rgb, blendWeight);
     return;
   }
 
@@ -297,7 +345,7 @@ void main() {
       // own coast, and seamounts shadow the surface above them.
       if (surf > 0.) here = max(here, 0.);
 
-      float dark = castShadow(elocal, here, metres);
+      float dark = softShadow(elocal, here, metres);
       // Shadowed ground keeps some skylight.
       color *= mix(1., .28, dark * shadowStrength);
     }
@@ -307,6 +355,6 @@ void main() {
     color = mix(color, tileOverlay(uv, shownZoom, dx, dy), tileDebug);
   }
 
-  fragColor = vec4(color, opacity);
+  fragColor = vec4(color, opacity * blendWeight);
 }
 `;

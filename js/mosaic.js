@@ -133,8 +133,12 @@ async function pool(items, limit, task) {
 }
 
 // Keyed per source: layers collide on bare z/x/y.
+// Really a memory budget: a decoded tile is a quarter of a megabyte, and one
+// screenful across three layers is ~280 of them.
+const TILE_BYTES = TILE_SIZE * TILE_SIZE * 4;
+const TILE_CACHE_BUDGET = 192 * 1024 * 1024;
+const TILE_CACHE_CEILING = Math.floor(TILE_CACHE_BUDGET / TILE_BYTES);
 const TILE_CACHE_FLOOR = 128;
-const TILE_CACHE_CEILING = 256;
 let tileCacheLimit = TILE_CACHE_FLOOR;
 
 export function setTileCacheLimit(wanted) {

@@ -17,6 +17,7 @@ import {
   imagerySource,
   projectionName,
   selected,
+  shadowSoftness,
   shadowSteps,
   shadowStrength,
   showGraticule,
@@ -52,8 +53,9 @@ export function buildGui({ countries, byName, setCenter, counters }) {
     storageKey: "flat-earth",
   });
 
+  gui.addElement(document.querySelector("#ui"));
+
   gui.addSection("Projection");
-  gui.addSegmented("Projection", projectionName, ["mercator", "equirectangular"]);
   gui.addSlider("Centre lon", centreLon, -180, 180, 0.01);
   gui.addSlider("Centre lat", centreLat, -90, 90, 0.01);
   gui.addSelect(
@@ -74,6 +76,11 @@ export function buildGui({ countries, byName, setCenter, counters }) {
     selected.set(NONE);
     setCenter(0, 0);
   });
+  gui.addSegmented("Unroll", projectionName, ["mercator", "equirectangular"], {
+    title:
+      "Mercator keeps shapes true and cannot reach the poles; equirectangular " +
+      "keeps distance true along the line through the centre, and can.",
+  });
 
   gui.addSection("Imagery");
   gui.addSelect("Source", imagerySource, ["none", ...Object.keys(colorProviders)]);
@@ -93,10 +100,17 @@ export function buildGui({ countries, byName, setCenter, counters }) {
     whileShaded
   );
 
-  gui.addSlider("Relief strength", hillshade, 0, 1, 0.01, whileShaded);
+  gui.addSlider("Shading strength", hillshade, 0, 1, 0.01, {
+    ...whileShaded,
+    title:
+      "How strongly the hillshade is drawn. It does not change the terrain, " +
+      "so it does not change the shadows -- exaggeration does that.",
+  });
   gui.addSlider("Exaggeration", exaggeration, 1, 20, 0.5, {
     ...whileRelief,
-    title: "At world scale true slopes are too gentle to read",
+    title:
+      "At world scale true slopes are too gentle to read. This is the one " +
+      "control that changes the terrain, so it sets shadow length too.",
   });
   gui.addSlider("Sun azimuth", sunAzimuth, 0, 360, 1, whileRelief);
   gui.addCheckbox("Cast shadows", castShadows, {
@@ -106,7 +120,13 @@ export function buildGui({ countries, byName, setCenter, counters }) {
   const whileShadowing = { disabledWhen: () => !terrain() || !castShadows() };
   gui.addSlider("Shadow strength", shadowStrength, 0, 1, 0.01, {
     ...whileShadowing,
-    title: "How dark shadowed ground goes. Independent of relief strength.",
+    title: "How dark shadowed ground goes. Independent of shading strength.",
+  });
+  gui.addSlider("Shadow softness", shadowSoftness, 0, 1, 0.01, {
+    ...whileShadowing,
+    title:
+      "The sun as a disc rather than a point. Four rays scattered across it\n" +
+      "and averaged, so the penumbra widens with distance from the caster.",
   });
   gui.addSlider("Shadow steps", shadowSteps, 16, 192, 8, {
     ...whileShadowing,
@@ -183,9 +203,8 @@ export function buildGui({ countries, byName, setCenter, counters }) {
   gui.addSection("Map data");
   gui.addElement(document.querySelector("#readout"));
 
-  // guspira folds below 950px on its own, but a stored panel state beats that
-  // default -- so a session that left it open would carry that onto a phone,
-  // where the panel covers the map.
+  // guspira folds below 950px, but a stored state beats that default and would
+  // carry a desktop session's open panel onto a phone.
   if (window.matchMedia("(max-width: 950px)").matches) {
     gui.rowsExpanded.set(false);
   }

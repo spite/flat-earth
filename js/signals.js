@@ -23,6 +23,7 @@ export const sunAltitude = signal(25);
 export const castShadows = signal(true);
 export const shadowStrength = signal(0.55);
 export const shadowSteps = signal(192);
+export const shadowSoftness = signal(0.35);
 
 export const waterSource = signal("JRC surface water");
 export const waterLevel = signal(0.35);

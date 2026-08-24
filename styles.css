@@ -24,6 +24,7 @@ canvas {
   display: block;
 }
 
+#ui,
 #readout {
   color: #b9b9be;
   font: 11px/1.5 var(--sans);
@@ -46,6 +47,7 @@ canvas {
   max-height: 100vh;
 }
 
+#ui .hint,
 #readout #imagery-status,
 #readout #relief-status,
 #readout #terrain-status,

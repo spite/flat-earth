@@ -13,10 +13,8 @@ import { decodeElevation } from "./elevation-decode.js";
 
 const TILE = 256;
 
-// The pyramid comes from the whole field, so it cannot fill a tile at a time:
-// the screen keeps the last complete window while the next one loads. A part
-// filled field reads as sea level, a stale pyramid as maxima in the wrong
-// place.
+// The pyramid needs the whole field, so the screen keeps the last complete
+// window: a part-filled one reads as sea level, a stale pyramid as wrong maxima.
 export function createElevationGrid({
   concurrency = 6,
   onUpdate,

@@ -58,6 +58,7 @@ import {
   imagerySource,
   projectionName,
   selected,
+  shadowSoftness,
   shadowSteps,
   shadowStrength,
   showGraticule,
@@ -91,6 +92,9 @@ const ELEVATION_BACKSTOP_ZOOM = 3;
 const center = { value: new Vector2(0, 0) };
 const projection = { value: PROJECTION.mercator };
 
+// Shared by every material: the running average's weight for this sample.
+const blendWeight = { value: 1 };
+
 function makeMaterial(color, opacity = 1) {
   return new RawShaderMaterial({
     uniforms: {
@@ -98,6 +102,7 @@ function makeMaterial(color, opacity = 1) {
       projection,
       color: { value: new Color(color) },
       opacity: { value: opacity },
+      blendWeight,
     },
     vertexShader,
     fragmentShader,
@@ -211,6 +216,9 @@ const rasterUniforms = {
   shadows: { value: 0 },
   shadowStrength: { value: shadowStrength() },
   shadowSteps: { value: shadowSteps() },
+  shadowSoftness: { value: shadowSoftness() },
+  frameSeed: { value: 0 },
+  blendWeight,
   maxPyramid: { value: null },
   pyramidLevels: { value: 1 },
   terrainMax: { value: 3000 },
@@ -294,10 +302,15 @@ function pendingByBand() {
 
 const shadowsReady = signal(false);
 
-// Nothing redraws unless it changed; a 192-step march is dear to repeat.
+// Soft shadows are sampled, so one frame is noisy: a change is re-rendered
+// this many times, each with a fresh seed, averaged, and then it stops.
+const ACCUMULATE = 32;
+
 let dirty = true;
+let sample = 0;
 const invalidate = () => {
   dirty = true;
+  sample = 0;
 };
 
 const stats = createStats();
@@ -698,6 +711,7 @@ const UNIFORM_BINDINGS = [
   ["exaggeration", exaggeration],
   ["shadowStrength", shadowStrength],
   ["shadowSteps", shadowSteps],
+  ["shadowSoftness", shadowSoftness],
   ["waterLevel", waterLevel],
   ["shadows", () => (castShadows() && shadowsReady() ? 1 : 0)],
   ["rawMosaic", () => (showMosaic() ? 1 : 0)],
@@ -835,8 +849,7 @@ function resize() {
 
   const ratio = renderer.getPixelRatio();
   const budget = detailBudget(width * ratio, height * ratio);
-  // Three windowed layers, so a screenful is three budgets squared; a fixed
-  // 128 sat under that and panning back refetched.
+  // Three windowed layers, so a screenful is three budgets squared.
   setTileCacheLimit(3 * budget * budget);
   rasterUniforms.resolution.value.set(
     width * renderer.getPixelRatio(),
@@ -868,13 +881,23 @@ renderer.setAnimationLoop((now) => {
   const frameMs = Math.min(stamp - lastFrameAt, 1000);
   lastFrameAt = stamp;
 
+  // Soft shadows need averaging; everything else converges on the first frame.
+  const wanted = shadowsReady() && castShadows() && shadowSoftness() > 0 ? ACCUMULATE : 1;
+
   let submit = 0;
-  if (dirty) {
+  if (dirty || sample < wanted) {
     dirty = false;
     updatePlaneExtent();
+
+    rasterUniforms.frameSeed.value = sample;
+    blendWeight.value = 1 / (sample + 1);
+    renderer.autoClear = sample === 0;
+
     const startedAt = performance.now();
     renderer.render(scene, camera);
     submit = performance.now() - startedAt;
+    sample += 1;
+
     drawCalls.sample(renderer.info.render.calls);
     textureCount.sample(renderer.info.memory.textures);
   }

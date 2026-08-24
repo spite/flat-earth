@@ -136,7 +136,6 @@ export const waterProviders = {
   ),
 };
 
-// A throttled response often has no CORS header, so no status.
 export const elevationProviders = {
   "AWS terrain": Object.assign(
     (x, y, z) =>
