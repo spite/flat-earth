@@ -39,6 +39,8 @@ export function createElevationGrid({
 
   const present = new Set();
   const loading = new Set();
+  // Remembered, or a dead tile is re-asked on every window move.
+  const failed = new Set();
   let queue = [];
   let inFlight = 0;
   let field = 0;
@@ -136,7 +138,7 @@ export function createElevationGrid({
     }
 
     shown = { texture, pyramid, block, levels: pyramidLevels, maxHeight };
-    onUpdate?.({ texture, block, provider, maxHeight });
+    onUpdate?.({ texture, block, provider, maxHeight, failed: failed.size });
     onShadowField?.({ pyramid, levels: pyramidLevels, maxHeight });
     onPaint?.();
   }
@@ -209,7 +211,7 @@ export function createElevationGrid({
       for (let column = 0; column < block.width; column++) {
         const x = wrap(block.x0 + column, side);
         const key = keyOf(x, y);
-        if (present.has(key) || loading.has(key)) continue;
+        if (present.has(key) || loading.has(key) || failed.has(key)) continue;
         wanted.push({
           x,
           y,
@@ -243,7 +245,9 @@ export function createElevationGrid({
           writeTile(data, slot[0], slot[1]);
           present.add(key);
         })
-        .catch(() => {})
+        .catch((error) => {
+          if (generation === field && error.name !== "AbortError") failed.add(key);
+        })
         .finally(() => {
           if (generation === field) loading.delete(key);
           inFlight -= 1;
@@ -259,6 +263,7 @@ export function createElevationGrid({
     era = new AbortController();
     present.clear();
     loading.clear();
+    failed.clear();
     pyramidFor = null;
   }
 

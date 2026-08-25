@@ -507,7 +507,8 @@ const detail = createTileGrid({
     rasterUniforms.hasDetail.value = 1;
     detailStatus.textContent =
       `detail z${zoom} · ${width}×${height} tiles · ` +
-      `${window.innerWidth}×${window.innerHeight} @${window.devicePixelRatio}x`;
+      `${window.innerWidth}×${window.innerHeight} @${window.devicePixelRatio}x` +
+      `${state.failed ? `, ${state.failed} failed` : ""}`;
   },
 });
 
@@ -570,7 +571,7 @@ const elevation = createElevationGrid({
     rasterUniforms.terrainMax.value = state.maxHeight || 3000;
     terrainStatus.textContent =
       `${state.provider.attribution} — terrain z${zoom}, ` +
-      `${width}×${height} tiles`;
+      `${width}×${height} tiles${state.failed ? `, ${state.failed} failed` : ""}`;
   },
 });
 
@@ -595,7 +596,8 @@ const water = createTileGrid({
     rasterUniforms.waterZoom.value = zoom;
     rasterUniforms.hasWaterMap.value = 1;
     waterStatus.textContent =
-      `${state.provider.attribution} — water z${zoom}, ${width}×${height} tiles`;
+      `${state.provider.attribution} — water z${zoom}, ` +
+      `${width}×${height} tiles${state.failed ? `, ${state.failed} failed` : ""}`;
   },
 });
 

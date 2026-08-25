@@ -132,7 +132,6 @@ async function pool(items, limit, task) {
   await Promise.all(workers);
 }
 
-// Keyed per source: layers collide on bare z/x/y.
 // Really a memory budget: a decoded tile is a quarter of a megabyte, and one
 // screenful across three layers is ~280 of them.
 const TILE_BYTES = TILE_SIZE * TILE_SIZE * 4;
@@ -148,6 +147,7 @@ export function setTileCacheLimit(wanted) {
   );
   evict();
 }
+// Keyed per source: layers collide on bare z/x/y.
 const tileCache = new Map();
 
 function cacheGet(key) {
@@ -201,8 +201,7 @@ async function compositeTiles(provider, zoom, options) {
   const canvas = document.createElement("canvas");
   canvas.width = block.width * TILE_SIZE;
   canvas.height = block.height * TILE_SIZE;
-  // Only the heightfield is read back; elsewhere this just forces a slower,
-  // CPU-backed canvas.
+  // Only the heightfield is read back; elsewhere it just slows the canvas.
   const context = canvas.getContext("2d", { willReadFrequently: readback });
 
   if (background) {

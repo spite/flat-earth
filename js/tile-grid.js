@@ -19,10 +19,11 @@ export function createTileGrid({
   let cacheKey = "";
   let block = null;
 
-  // `present` only fills on resolve, so without `loading` a window change
-  // requeues everything still in flight.
+  // `present` only fills on resolve; without this a move requeues what is in flight.
   const present = new Set();
   const loading = new Set();
+  // Remembered, or a dead tile is re-asked on every window move.
+  const failed = new Set();
   let queue = [];
   let inFlight = 0;
   let field = 0;
@@ -80,7 +81,7 @@ export function createTileGrid({
       for (let column = 0; column < block.width; column++) {
         const x = wrap(block.x0 + column, side);
         const key = keyOf(x, y);
-        if (present.has(key) || loading.has(key)) continue;
+        if (present.has(key) || loading.has(key) || failed.has(key)) continue;
         wanted.push({
           x,
           y,
@@ -97,8 +98,12 @@ export function createTileGrid({
 
   function report() {
     const left = queue.length + inFlight;
-    if (left === 0) onProgress?.(0, 0);
-    else onProgress?.(total - left, total);
+    if (left > 0) {
+      onProgress?.(total - left, total);
+      return;
+    }
+    onProgress?.(0, 0);
+    if (block) onUpdate?.({ texture, block, provider, failed: failed.size });
   }
 
   function pump() {
@@ -119,7 +124,9 @@ export function createTileGrid({
           texture.needsUpdate = true;
           onPaint?.();
         })
-        .catch(() => {})
+        .catch((error) => {
+          if (generation === field && error.name !== "AbortError") failed.add(key);
+        })
         .finally(() => {
           if (generation === field) loading.delete(key);
           inFlight -= 1;
@@ -140,6 +147,7 @@ export function createTileGrid({
     queue = [];
     present.clear();
     loading.clear();
+    failed.clear();
     block = null;
     provider = null;
     source = null;
@@ -204,7 +212,7 @@ export function createTileGrid({
     }
 
     enqueue();
-    onUpdate?.({ texture, block, provider });
+    onUpdate?.({ texture, block, provider, failed: failed.size });
     pump();
   }
 

@@ -201,14 +201,12 @@ export function buildGui({ countries, byName, setCenter, counters }) {
   gui.addSection("Map data");
   gui.addElement(document.querySelector("#readout"));
 
-  // guspira folds below 950px, but a stored state beats that default and would
-  // carry a desktop session's open panel onto a phone.
+  // guspira persists both of these on first run, after which its own defaults
+  // are never consulted again -- so they have to be set, not declared.
   if (window.matchMedia("(max-width: 950px)").matches) {
     gui.rowsExpanded.set(false);
   }
 
-  // Same trap: guspira persists a section's state on first run, after which
-  // `open:` in the source is never consulted again.
   diagnostics.setOpen(false);
 
   return gui;

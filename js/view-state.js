@@ -125,8 +125,7 @@ export function createViewState({ camera, controls, setCenter }) {
       clearTimeout(timer);
       timer = setTimeout(write, 400);
     },
-    // Window layers wait on this, or they load the default view then the
-    // URL's and throw the first away.
+    // Window layers wait on this, or they load the default view and discard it.
     isReady: () => ready,
     markReady() {
       ready = true;
