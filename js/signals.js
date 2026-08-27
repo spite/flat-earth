@@ -12,6 +12,10 @@ export const uiVisible = signal(true);
 
 export const imagerySource = signal("Esri satellite");
 export const autoDetail = signal(true);
+// Screen-space paper grain over the finished frame.
+export const paper = signal(0);
+export const paperBump = signal(0.5);
+export const paperScale = signal(0.5);
 
 export const terrain = signal(true);
 export const elevationSource = signal("AWS terrain");

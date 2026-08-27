@@ -84,6 +84,10 @@ uniform float shadows;
 uniform float shadowStrength;
 uniform float shadowSteps;
 uniform float shadowSoftness;
+uniform float paper;
+uniform sampler2D paperTexture;
+uniform float paperBump;
+uniform float paperScale;
 uniform float frameSeed;
 uniform float blendWeight;
 uniform sampler2D maxPyramid;
@@ -105,6 +109,13 @@ ${projectionGLSL}
 
 #define EQUATOR_METRES_PER_PIXEL 156543.03392804097
 #define SHADOW_RAYS 4
+
+// Inside what JRC Global Surface Water actually covers, which is 77.7N to
+// 58.9S -- measured, not the documented 80/60. Deliberately inside it: matched
+// exactly, rounding leaves a latitude band with neither mask nor fallback, and
+// overlapping costs nothing since the mask already calls that ocean water.
+#define MASK_MAX_LAT 75.
+#define MASK_MIN_LAT -56.
 
 // Hashed, not interleaved gradient noise: IGN is built to be structured, and
 // that reads as a weave. Seeded by frame so each sample lands somewhere new.
@@ -226,9 +237,12 @@ float terrainShade(
 vec2 windowLocal(in vec2 uv, in vec4 win, in float zoom) {
   float side = exp2(zoom);
   vec2 tile = uv * side;
-  // Lifted across the antimeridian, where uv wraps and the window does not.
-  if (tile.x < win.x) tile.x += side;
-  return (tile - win.xy) / win.zw;
+  // Wrapped into the window's own turn of the world. A single lift is not
+  // enough: the probe lifts across the antimeridian before rounding, so a
+  // window can start a whole turn past it and leave fragments behind.
+  float x = tile.x - win.x;
+  x -= floor(x / side) * side;
+  return vec2(x, tile.y - win.y) / win.zw;
 }
 
 bool insideWindow(in vec2 local) {
@@ -310,6 +324,13 @@ void main() {
     if (insideWindow(wlocal)) wetness = texture(waterMap, wlocal).a;
   }
 
+  // Outside the mask's own latitudes there is no observation to read, so below
+  // sea level stands in for one. Confined to that band deliberately: applied
+  // everywhere it floods the polders, which are dry land the sea is kept out of.
+  if (hasElevBackstop > .5 && (lonLat.y > MASK_MAX_LAT || lonLat.y < MASK_MIN_LAT)) {
+    wetness = max(wetness, texture(elevBackstop, uv).r < 0. ? 1. : 0.);
+  }
+
   float surf = smoothstep(waterLevel, min(waterLevel + .25, 1.), wetness);
 
   if (surf > 0. && waterFill > .5) {
@@ -352,6 +373,38 @@ void main() {
 
   if (tileDebug > 0.) {
     color = mix(color, tileOverlay(uv, shownZoom, dx, dy), tileDebug);
+  }
+
+  if (paper > 0.) {
+    // Screen space, so the sheet is what you look through, not something the
+    // map carries. Below one texel a pixel the tooth is magnified; above it
+    // the sheet's own grain falls under the pixel grid and reads as noise.
+    vec2 size = vec2(textureSize(paperTexture, 0));
+    vec2 sheet = gl_FragCoord.xy * paperScale / size;
+    // One screen pixel apart, so the slope is what the eye would see.
+    vec2 stride = paperScale / size;
+    // Mip-filtered, not forced to the base level: when the sheet is minified
+    // the hardware average is the honest one, and forcing level zero aliases.
+    float h = texture(paperTexture, sheet).g;
+    float hx = texture(paperTexture, sheet + vec2(stride.x, 0.)).g;
+    float hy = texture(paperTexture, sheet + vec2(0., stride.y)).g;
+
+    // Against the sheet's own mean, from the 1x1 mip (the LOD clamps): paper
+    // scans are near-white, so a fixed midpoint would only ever brighten.
+    float mean = textureLod(paperTexture, sheet, 20.).g;
+    // Signed around one: a multiply that only darkens reads as dimming, and
+    // over dark ground as nothing, hence the small additive term as well.
+    float tooth = (h - mean) * paper;
+    color = clamp(color * (1. + tooth * 1.4) + tooth * .07, 0., 1.);
+
+    // Lit from a fixed upper left, the way an embossed sheet is shown. Tying
+    // it to the map's sun would flatten the grain whenever the sun was high.
+    vec3 normal = normalize(vec3((h - hx) * paperBump * 24., (hy - h) * paperBump * 24., 1.));
+    vec3 toLight = normalize(vec3(-.6, .6, .55));
+    // Only the in-plane tilt: the full dot product carries normal.z, which
+    // normalize drives below one, and the frame would darken as bump rose.
+    float emboss = normal.x * toLight.x + normal.y * toLight.y;
+    color = clamp(color * (1. + emboss * paper * 1.6), 0., 1.);
   }
 
   fragColor = vec4(color, blendWeight);

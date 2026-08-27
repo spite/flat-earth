@@ -93,20 +93,25 @@ export function createElevationGrid({
     if (dx < -side / 2) dx += side;
     const dy = previous.block.y0 - nextBlock.y0;
 
-    const sx = Math.max(0, -dx) * TILE;
-    const sy = Math.max(0, -dy) * TILE;
-    const tx = Math.max(0, dx) * TILE;
-    const ty = Math.max(0, dy) * TILE;
-    const runWidth = Math.min(previous.width - sx, width - tx);
-    const runHeight = Math.min(previous.height - sy, height - ty);
-    if (runWidth <= 0 || runHeight <= 0) return;
+    // Once per turn of the world: a window spanning the wrap takes its columns
+    // from both sides, and a single run would drop the ones that came round.
+    for (const turn of [-side, 0, side]) {
+      const shift = dx + turn;
+      const sx = Math.max(0, -shift) * TILE;
+      const sy = Math.max(0, -dy) * TILE;
+      const tx = Math.max(0, shift) * TILE;
+      const ty = Math.max(0, dy) * TILE;
+      const runWidth = Math.min(previous.width - sx, width - tx);
+      const runHeight = Math.min(previous.height - sy, height - ty);
+      if (runWidth <= 0 || runHeight <= 0) continue;
 
-    for (let row = 0; row < runHeight; row++) {
-      const from = (sy + row) * previous.width + sx;
-      heights.set(
-        previous.heights.subarray(from, from + runWidth),
-        (ty + row) * width + tx
-      );
+      for (let row = 0; row < runHeight; row++) {
+        const from = (sy + row) * previous.width + sx;
+        heights.set(
+          previous.heights.subarray(from, from + runWidth),
+          (ty + row) * width + tx
+        );
+      }
     }
   }
 

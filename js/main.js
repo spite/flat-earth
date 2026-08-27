@@ -9,8 +9,10 @@ import {
   OrthographicCamera,
   PlaneGeometry,
   RawShaderMaterial,
+  RepeatWrapping,
   Scene,
   TOUCH,
+  TextureLoader,
   Vector2,
   Vector3,
   Vector4,
@@ -55,6 +57,9 @@ import {
   exaggeration,
   hillshade,
   imagerySource,
+  paper,
+  paperBump,
+  paperScale,
   projectionName,
   selected,
   shadowSoftness,
@@ -220,6 +225,10 @@ const rasterUniforms = {
   maxPyramid: { value: null },
   pyramidLevels: { value: 1 },
   terrainMax: { value: 3000 },
+  paper: { value: 0 },
+  paperTexture: { value: null },
+  paperBump: { value: paperBump() },
+  paperScale: { value: paperScale() },
   waterFill: { value: 0 },
   waterColor: { value: new Color(0xffffff) },
   waterMap: { value: null },
@@ -299,6 +308,14 @@ function pendingByBand() {
 }
 
 const shadowsReady = signal(false);
+
+const paperReady = signal(false);
+new TextureLoader().load("assets/Watercolor_ColdPress.webp", (texture) => {
+  texture.wrapS = RepeatWrapping;
+  texture.wrapT = RepeatWrapping;
+  rasterUniforms.paperTexture.value = texture;
+  paperReady.set(true);
+});
 
 // Soft shadows are sampled, so one frame is noisy: a change is re-rendered
 // this many times, each with a fresh seed, averaged, and then it stops.
@@ -712,6 +729,9 @@ const UNIFORM_BINDINGS = [
   ["shadowSteps", shadowSteps],
   ["shadowSoftness", shadowSoftness],
   ["waterLevel", waterLevel],
+  ["paper", () => (paperReady() ? paper() : 0)],
+  ["paperBump", paperBump],
+  ["paperScale", paperScale],
   ["shadows", () => (castShadows() && shadowsReady() ? 1 : 0)],
   ["rawMosaic", () => (showMosaic() ? 1 : 0)],
   ["tileDebug", () => (showTiles() ? tileTint() : 0)],

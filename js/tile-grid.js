@@ -193,9 +193,14 @@ export function createTileGrid({
       if (dx < -side / 2) dx += side;
       const dy = block.y0 - next.y0;
 
-      // Whole tiles of overlap, so it carries across in one blit.
+      // Whole tiles of overlap, so it carries across in a blit -- but drawImage
+      // clips where the world wraps, and a window that spans it would lose the
+      // columns that came round the other side while `present` still claimed
+      // them. The neighbouring turns are no-ops when there is nothing to wrap.
       const previous = open(next.width, next.height);
-      context.drawImage(previous, dx * TILE, dy * TILE);
+      for (const turn of [-side, 0, side]) {
+        context.drawImage(previous, (dx + turn) * TILE, dy * TILE);
+      }
       moved = true;
     }
 

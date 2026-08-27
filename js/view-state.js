@@ -7,6 +7,9 @@ import {
   exaggeration,
   hillshade,
   imagerySource,
+  paper,
+  paperBump,
+  paperScale,
   projectionName,
   selected,
   shadowSoftness,
@@ -53,6 +56,9 @@ const PARAMS = [
   ["watertint", waterTint, "string"],
   ["watersrc", waterSource, "string"],
   ["waterlevel", waterLevel, "number"],
+  ["paper", paper, "number"],
+  ["paperbump", paperBump, "number"],
+  ["paperscale", paperScale, "number"],
 ].map(([key, value, kind]) => ({ key, value, kind, fallback: value() }));
 
 export function createViewState({ camera, controls, setCenter }) {

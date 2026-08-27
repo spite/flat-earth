@@ -14,6 +14,9 @@ import {
   exaggeration,
   hillshade,
   imagerySource,
+  paper,
+  paperBump,
+  paperScale,
   projectionName,
   selected,
   shadowSoftness,
@@ -84,6 +87,18 @@ export function buildGui({ countries, byName, setCenter, counters }) {
   gui.addSection("Imagery");
   gui.addSelect("Source", imagerySource, ["none", ...Object.keys(colorProviders)]);
 
+
+  gui.addSlider("Paper", paper, 0, 1, 0.01, {
+    title: "A sheet's tooth over the finished frame, in screen space",
+  });
+
+  gui.addSlider("Paper bump", paperBump, 0, 1, 0.01, {
+    title: "How much the sheet's tooth is lit as relief rather than tint",
+  });
+
+  gui.addSlider("Paper scale", paperScale, 0.1, 3, 0.05, {
+    title: "Texels of sheet per screen pixel; above one the tooth reads as noise",
+  });
 
   gui.addSection("Terrain");
   gui.addCheckbox("Shading", terrain);
