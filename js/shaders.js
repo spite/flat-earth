@@ -125,6 +125,31 @@ float shadowNoise(in float seed) {
   return fract((p.x + p.y) * p.z);
 }
 
+// A bearing is measured from north, and north is a different direction on the
+// sheet at every point once the world has been recentred: over a pole the
+// meridians fan out, and lighting by bearing alone fans the shadows out with
+// them. This is the angle from the fragment's own meridian to the sheet's
+// vertical, added to the sun's bearing so the whole map is lit from one
+// direction, the way ground under one sun is.
+float planeConvergence(in vec2 lonLat) {
+  vec3 p = lonLatToPoint(lonLat);
+  vec3 pole = lonLatToPoint(uncenter(vec2(0., 90.), center));
+
+  // Up the sheet is the way to that pole across the surface.
+  vec3 up = pole - p * dot(pole, p);
+  // On that pole or opposite it there is no such way -- the two points where
+  // the sheet's meridians all meet, and a bearing means nothing anyway.
+  if (dot(up, up) < 1e-12) return 0.;
+  up = normalize(up);
+
+  float lon = lonLat.x * DEG;
+  float lat = lonLat.y * DEG;
+  vec3 east = vec3(cos(lon), 0., sin(lon));
+  vec3 north = vec3(-sin(lon) * sin(lat), cos(lat), cos(lon) * sin(lat));
+
+  return atan(dot(up, east), dot(up, north));
+}
+
 float castShadow(
   in vec2 local, in float here, in float metres, in float azimuth, in float rise
 ) {
@@ -177,8 +202,9 @@ float castShadow(
 
 // The sun is a disc, so its edge is a penumbra. One ray jittered is only noise;
 // scattering several across the disc and averaging is what softens it.
-float softShadow(in vec2 local, in float here, in float metres) {
-  float azimuth = sun.x * DEG;
+float softShadow(
+  in vec2 local, in float here, in float metres, in float azimuth
+) {
   float altitude = sun.y * DEG;
 
   if (shadowSoftness <= 0.) {
@@ -208,7 +234,8 @@ float metresPerTexel(in float lat, in float zoom) {
 }
 
 float terrainShade(
-  in sampler2D field, in vec2 local, in vec2 texel, in float metres
+  in sampler2D field, in vec2 local, in vec2 texel, in float metres,
+  in float azimuth
 ) {
   float west = texture(field, local - vec2(texel.x, 0.)).r;
   float east = texture(field, local + vec2(texel.x, 0.)).r;
@@ -221,7 +248,6 @@ float terrainShade(
     1.
   ));
 
-  float azimuth = sun.x * DEG;
   float altitude = sun.y * DEG;
   vec3 toSun = vec3(
     cos(altitude) * sin(azimuth),
@@ -333,6 +359,9 @@ void main() {
 
   float surf = smoothstep(waterLevel, min(waterLevel + .25, 1.), wetness);
 
+  // One direction over the whole sheet, turned into this fragment's bearing.
+  float sunBearing = sun.x * DEG + planeConvergence(lonLat);
+
   if (surf > 0. && waterFill > .5) {
     color = mix(color, waterColor, surf);
   }
@@ -343,7 +372,8 @@ void main() {
         elevation,
         elocal,
         1. / (elevWindow.zw * 256.),
-        metresPerTexel(lonLat.y, elevationZoom)
+        metresPerTexel(lonLat.y, elevationZoom),
+        sunBearing
       ), hillshade);
     } else if (hasElevBackstop > .5) {
       float side = exp2(elevBackstopZoom);
@@ -351,7 +381,8 @@ void main() {
         elevBackstop,
         uv,
         vec2(1. / (side * 256.)),
-        metresPerTexel(lonLat.y, elevBackstopZoom)
+        metresPerTexel(lonLat.y, elevBackstopZoom),
+        sunBearing
       ), hillshade);
     }
   }
@@ -365,7 +396,7 @@ void main() {
       // Unfilled, the sea bed is terrain like any other and shadows itself.
       if (surf > 0. && waterFill > .5) here = max(here, 0.);
 
-      float dark = softShadow(elocal, here, metres);
+      float dark = softShadow(elocal, here, metres, sunBearing);
       // Shadowed ground keeps some skylight.
       color *= mix(1., .28, dark * shadowStrength);
     }
